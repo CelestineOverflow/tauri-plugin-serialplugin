@@ -14,8 +14,8 @@ use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Runtime};
 use tauri::plugin::PluginHandle;
+use tauri::{AppHandle, Emitter, Runtime};
 
 /// Access to the serial port APIs for mobile platforms.
 pub struct SerialPort<R: Runtime> {
@@ -368,8 +368,8 @@ impl<R: Runtime> SerialPort<R> {
             drop(existing.serialport);
         }
 
-        // Открываем новый порт
-        let port = serialport::new(path.clone(), baud_rate)
+        // Open new port 
+        let mut port = serialport::new(path.clone(), baud_rate)
             .data_bits(data_bits.map(Into::into).unwrap_or(SerialDataBits::Eight))
             .flow_control(
                 flow_control
@@ -380,7 +380,13 @@ impl<R: Runtime> SerialPort<R> {
             .stop_bits(stop_bits.map(Into::into).unwrap_or(SerialStopBits::One))
             .timeout(Duration::from_millis(timeout.unwrap_or(200)))
             .open()
+        // Should make this behaivor optional
+        // Stops Serial to USB converter from leaving ESP32 in bootloader mode
             .map_err(|e| Error::String(format!("Failed to open serial port: {}", e)))?;
+        port.write_request_to_send(true) // RTS = HIGH → EN released
+            .map_err(|e| Error::String(format!("Failed to set RTS: {}", e)))?;
+        port.write_data_terminal_ready(true) // DTR = HIGH → IO0 pulled high
+            .map_err(|e| Error::String(format!("Failed to set DTR: {}", e)))?;
 
         serialports.insert(
             path,
